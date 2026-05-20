@@ -1,0 +1,27 @@
+{
+  "name": "flux-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Flux — local-first personal expense tracker with virtual accounts, recurring expenses, and budgets",
+  "scripts": {
+    "api": "pnpm --filter @flux/api",
+    "mobile": "pnpm --filter @flux/mobile",
+    "db": "pnpm --filter @flux/db",
+    "dev:api": "pnpm --filter @flux/api dev",
+    "dev:mobile": "pnpm --filter @flux/mobile start",
+    "build": "pnpm --filter @flux/api build",
+    "lint": "pnpm -r --parallel run lint",
+    "typecheck": "pnpm -r --parallel run typecheck",
+    "prisma:generate": "pnpm --filter @flux/db generate",
+    "prisma:migrate": "pnpm --filter @flux/db migrate",
+    "prisma:deploy": "pnpm --filter @flux/db deploy"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "prettier": "^3.3.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@9.12.0"
+}

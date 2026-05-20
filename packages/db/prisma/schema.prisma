@@ -1,0 +1,259 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================
+// Better Auth — required tables (created by `npx @better-auth/cli@latest generate`,
+// inlined here so the schema is self-contained).
+// =============================================================
+
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+
+  sessions      Session[]
+  accountsOAuth Account[]
+  verifications Verification[]
+
+  // Flux domain
+  fluxAccounts   FluxAccount[]
+  categories     Category[]
+  transactions   Transaction[]
+  recurringItems RecurringItem[]
+  budgets        Budget[]
+  syncStates     SyncState[]
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime
+  updatedAt DateTime
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("verification")
+}
+
+// =============================================================
+// Flux domain — virtual accounts, categories, transactions, recurring, budgets.
+// All entities are owned by a single user. Clients generate UUIDs locally, so we
+// use String IDs (not autoincrement) to support offline-first usage and merges.
+// =============================================================
+
+enum FluxAccountKind {
+  CHECKING
+  SAVINGS
+  CASH
+  POT // a virtual cagnotte (vacation fund, etc.)
+  OTHER
+}
+
+enum TransactionDirection {
+  EXPENSE
+  INCOME
+  TRANSFER
+}
+
+enum RecurrenceUnit {
+  DAY
+  WEEK
+  MONTH
+  YEAR
+}
+
+model FluxAccount {
+  id          String          @id
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  kind        FluxAccountKind @default(CHECKING)
+  color       String          @default("#5B8DEF") // hex, used by the UI
+  icon        String          @default("wallet")
+  // Money is stored as integer cents to avoid float drift.
+  initialBalanceCents Int     @default(0)
+  currency    String          @default("EUR")
+  archivedAt  DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+
+  transactionsFrom Transaction[] @relation("AccountFrom")
+  transactionsTo   Transaction[] @relation("AccountTo")
+  recurringItems   RecurringItem[]
+
+  @@index([userId])
+  @@index([userId, updatedAt])
+}
+
+model Category {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  color     String   @default("#94A3B8")
+  icon      String   @default("tag")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  transactions   Transaction[]
+  recurringItems RecurringItem[]
+  budgets        Budget[]
+
+  @@index([userId])
+  @@index([userId, updatedAt])
+}
+
+model Transaction {
+  id            String              @id
+  userId        String
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  direction     TransactionDirection @default(EXPENSE)
+  amountCents   Int
+  currency      String              @default("EUR")
+  description   String
+  note          String?
+  date          DateTime            // The date the user wants this counted on.
+  categoryId    String?
+  category      Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  accountFromId String?
+  accountFrom   FluxAccount?        @relation("AccountFrom", fields: [accountFromId], references: [id], onDelete: SetNull)
+  accountToId   String?
+  accountTo     FluxAccount?        @relation("AccountTo", fields: [accountToId], references: [id], onDelete: SetNull)
+  // When this transaction was materialised from a recurring rule, we keep a back-pointer.
+  recurringItemId String?
+  recurringItem   RecurringItem?    @relation(fields: [recurringItemId], references: [id], onDelete: SetNull)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  deletedAt     DateTime?
+
+  @@index([userId])
+  @@index([userId, date])
+  @@index([userId, updatedAt])
+  @@index([userId, categoryId])
+  @@index([userId, accountFromId])
+}
+
+model RecurringItem {
+  id              String         @id
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  direction       TransactionDirection @default(EXPENSE)
+  amountCents     Int
+  currency        String         @default("EUR")
+  categoryId      String?
+  category        Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  accountId       String
+  account         FluxAccount    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  note            String?
+
+  // Cadence: e.g. every 2 weeks, every 5 days, every 1 month on the 5th, ...
+  intervalUnit    RecurrenceUnit
+  intervalCount   Int            @default(1)
+  // For MONTH cadences the user can pin a specific day-of-month (1-31). When null,
+  // the start date's day is reused. 31 collapses to the month's last day.
+  monthDay        Int?
+  // For WEEK cadences, 0=Sunday..6=Saturday. Null = use start date weekday.
+  weekDay         Int?
+
+  startDate       DateTime
+  // Stop conditions — at most one is set.
+  endDate         DateTime?
+  remainingCount  Int?
+
+  isPaused        Boolean        @default(false)
+  // Timestamp through which we've already materialised transactions. Allows the
+  // client to ask: "give me all due-but-not-yet-recorded charges since X".
+  lastRunAt       DateTime?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+
+  transactions    Transaction[]
+
+  @@index([userId])
+  @@index([userId, updatedAt])
+}
+
+model Budget {
+  id          String   @id
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  // Cap per month in cents.
+  monthlyCapCents Int
+  currency    String   @default("EUR")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([userId])
+  @@index([userId, updatedAt])
+}
+
+// Per-user, per-device cursor for delta sync.
+model SyncState {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId   String
+  lastPulled DateTime
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, deviceId])
+  @@index([userId])
+}

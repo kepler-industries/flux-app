@@ -1,0 +1,27 @@
+node_modules/
+dist/
+build/
+.expo/
+.expo-shared/
+*.log
+*.tsbuildinfo
+.DS_Store
+.env
+.env.local
+.env.*.local
+coverage/
+
+# Prisma
+apps/api/prisma/migrations/dev*
+packages/db/node_modules
+
+# Expo
+apps/mobile/.expo/
+apps/mobile/web-build/
+apps/mobile/dist/
+apps/mobile/ios/
+apps/mobile/android/
+
+# Misc
+.pnpm-store/
+.turbo/

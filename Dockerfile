@@ -28,7 +28,13 @@ COPY --from=deps /repo/apps/api/node_modules ./apps/api/node_modules
 COPY --from=deps /repo/packages/db/node_modules ./packages/db/node_modules
 COPY --from=deps /repo/packages/shared/node_modules ./packages/shared/node_modules
 COPY . .
-RUN pnpm --filter @flux/db exec prisma generate
+# Workspace symlinks created in `deps` only saw package.json; re-link now that
+# the actual sources are in place.
+RUN pnpm install --frozen-lockfile --offline || pnpm install --offline || pnpm install
+# Build shared packages first — `@flux/api` resolves them via package.json
+# `main` (./dist/index.js), which must exist before tsc runs against the API.
+RUN pnpm --filter @flux/db build
+RUN pnpm --filter @flux/shared build
 RUN pnpm --filter @flux/api build
 
 # -------- runtime stage --------

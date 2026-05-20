@@ -57,7 +57,6 @@ app.route('/sync', sync);
 const port = env.PORT;
 
 serve({ fetch: app.fetch, port }, (info) => {
-  // eslint-disable-next-line no-console
   console.log(`flux-api listening on http://localhost:${info.port}`);
 });
 

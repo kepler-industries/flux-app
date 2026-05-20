@@ -25,3 +25,4 @@ apps/mobile/android/
 # Misc
 .pnpm-store/
 .turbo/
+.claude/
